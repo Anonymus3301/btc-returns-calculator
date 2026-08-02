@@ -2,7 +2,14 @@
   const API_BASE = "https://api.coingecko.com/api/v3";
   const CACHE_KEY = "btc-history-cache-v1";
   const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const API_KEY_STORAGE_KEY = "cg-demo-api-key";
 
+  class ApiKeyError extends Error {}
+
+  const apiKeySetupEl = document.getElementById("api-key-setup");
+  const apiKeyInputEl = document.getElementById("api-key-input");
+  const apiKeyErrorEl = document.getElementById("api-key-error");
+  const saveKeyBtn = document.getElementById("save-key-btn");
   const statusEl = document.getElementById("status");
   const formEl = document.getElementById("calc-form");
   const dateEl = document.getElementById("date");
@@ -41,9 +48,18 @@
     return qty.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC";
   }
 
+  function getStoredApiKey() {
+    return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
+  }
+
   async function fetchJson(url) {
-    const res = await fetch(url);
+    const apiKey = getStoredApiKey();
+    const headers = apiKey ? { "x-cg-demo-api-key": apiKey } : {};
+    const res = await fetch(url, { headers });
     if (!res.ok) {
+      if (res.status === 401) {
+        throw new ApiKeyError("That API key was rejected. Please check it and try again.");
+      }
       if (res.status === 429) {
         throw new Error("Rate limited by the price API. Please wait a moment and try again.");
       }
@@ -111,7 +127,19 @@
     errorEl.textContent = "";
   }
 
-  async function init() {
+  function showApiKeySetup(errorMsg) {
+    statusEl.classList.add("hidden");
+    formEl.classList.add("hidden");
+    apiKeySetupEl.classList.remove("hidden");
+    apiKeyErrorEl.textContent = errorMsg || "";
+    apiKeyErrorEl.classList.toggle("hidden", !errorMsg);
+  }
+
+  async function loadAndRender() {
+    apiKeySetupEl.classList.add("hidden");
+    statusEl.classList.remove("hidden", "error-text");
+    statusEl.textContent = "Loading Bitcoin price history…";
+
     try {
       const data = await loadHistory();
       priceHistory.inr = buildMap(data.inr);
@@ -130,9 +158,33 @@
       statusEl.classList.add("hidden");
       formEl.classList.remove("hidden");
     } catch (err) {
+      if (err instanceof ApiKeyError) {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+        showApiKeySetup(err.message);
+        return;
+      }
       statusEl.textContent = `Couldn't load Bitcoin price history: ${err.message}`;
       statusEl.classList.add("error-text");
     }
+  }
+
+  saveKeyBtn.addEventListener("click", () => {
+    const key = apiKeyInputEl.value.trim();
+    if (!key) {
+      apiKeyErrorEl.textContent = "Please paste your API key.";
+      apiKeyErrorEl.classList.remove("hidden");
+      return;
+    }
+    localStorage.setItem(API_KEY_STORAGE_KEY, key);
+    loadAndRender();
+  });
+
+  function init() {
+    if (!getStoredApiKey()) {
+      showApiKeySetup();
+      return;
+    }
+    loadAndRender();
   }
 
   function calculate(dateStr, amount, currency) {
