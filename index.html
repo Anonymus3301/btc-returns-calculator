@@ -15,7 +15,22 @@
     </header>
 
     <main class="card">
-      <div id="status" class="status">Loading Bitcoin price history…</div>
+      <div id="api-key-setup" class="api-key-setup hidden">
+        <p>This app needs a free CoinGecko API key to fetch Bitcoin price history.</p>
+        <ol>
+          <li>Get a free Demo API key from the <a href="https://www.coingecko.com/en/developers/dashboard" target="_blank" rel="noopener">CoinGecko dashboard</a> (no credit card needed).</li>
+          <li>Paste it below.</li>
+        </ol>
+        <div class="field">
+          <label for="api-key-input">CoinGecko Demo API key</label>
+          <input type="text" id="api-key-input" placeholder="CG-xxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" />
+        </div>
+        <button type="button" id="save-key-btn">Save &amp; load prices</button>
+        <div id="api-key-error" class="error hidden"></div>
+        <p class="hint">Stored only in your browser's local storage; never sent anywhere except CoinGecko.</p>
+      </div>
+
+      <div id="status" class="status hidden">Loading Bitcoin price history…</div>
 
       <form id="calc-form" class="calc-form hidden">
         <div class="field">
