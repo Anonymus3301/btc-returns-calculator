@@ -1,38 +1,34 @@
 (() => {
-  const API_BASE = "https://api.coingecko.com/api/v3";
-  const CACHE_KEY = "btc-history-cache-v2";
+  const API_BASE = "https://www.zebapi.com/api/v2/market";
+  const SYMBOLS = { inr: "BTC-INR", usdt: "BTC-USDT" };
+  const LOOKBACK_DAYS = 730;
+  const CACHE_PREFIX = "btc-klines-v1-";
   const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-  const API_KEY_STORAGE_KEY = "cg-demo-api-key";
 
-  class ApiKeyError extends Error {}
-
-  const apiKeySetupEl = document.getElementById("api-key-setup");
-  const apiKeyInputEl = document.getElementById("api-key-input");
-  const apiKeyErrorEl = document.getElementById("api-key-error");
-  const saveKeyBtn = document.getElementById("save-key-btn");
   const statusEl = document.getElementById("status");
   const formEl = document.getElementById("calc-form");
   const dateEl = document.getElementById("date");
   const dateHintEl = document.getElementById("date-hint");
   const amountEl = document.getElementById("amount");
   const currencyEl = document.getElementById("currency");
-  const submitBtn = document.getElementById("submit-btn");
+  const usdtOptionEl = document.getElementById("usdt-option");
   const errorEl = document.getElementById("error");
   const resultEl = document.getElementById("result");
 
-  // currency -> Map(dateStr -> price)
+  // currency -> Map(dateStr -> closingPrice)
   let priceHistory = { inr: new Map(), usdt: new Map() };
-  let sortedDates = [];
+  let sortedDates = { inr: [], usdt: [] };
   let currentPrices = { inr: null, usdt: null };
 
   function toDateStr(tsMs) {
     return new Date(tsMs).toISOString().slice(0, 10);
   }
 
-  function buildMap(prices) {
+  function buildMap(klines) {
     const map = new Map();
-    for (const [ts, price] of prices) {
-      map.set(toDateStr(ts), price);
+    for (const k of klines) {
+      const [openTimeSec, , , , close] = k;
+      map.set(toDateStr(openTimeSec * 1000), parseFloat(close));
     }
     return map;
   }
@@ -48,66 +44,49 @@
     return qty.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC";
   }
 
-  function getStoredApiKey() {
-    return localStorage.getItem(API_KEY_STORAGE_KEY) || "";
-  }
-
-  async function fetchJson(url) {
-    const apiKey = getStoredApiKey();
-    const headers = apiKey ? { "x-cg-demo-api-key": apiKey } : {};
-    const res = await fetch(url, { headers });
-    if (!res.ok) {
-      if (res.status === 401) {
-        throw new ApiKeyError("That API key was rejected. Please check it and try again.");
-      }
-      if (res.status === 429) {
-        throw new Error("Rate limited by the price API. Please wait a moment and try again.");
-      }
-      throw new Error(`Request failed (${res.status})`);
-    }
-    return res.json();
-  }
-
-  async function loadHistory() {
-    const cachedRaw = localStorage.getItem(CACHE_KEY);
+  async function fetchKlines(symbol) {
+    const cacheKey = CACHE_PREFIX + symbol;
+    const cachedRaw = localStorage.getItem(cacheKey);
     if (cachedRaw) {
       try {
         const cached = JSON.parse(cachedRaw);
         if (Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-          return cached;
+          return cached.klines;
         }
       } catch (_) {
         // ignore corrupt cache
       }
     }
 
-    const [inrData, usdData] = await Promise.all([
-      fetchJson(`${API_BASE}/coins/bitcoin/market_chart?vs_currency=inr&days=365`),
-      fetchJson(`${API_BASE}/coins/bitcoin/market_chart?vs_currency=usd&days=365`),
-    ]);
-
-    const payload = {
-      fetchedAt: Date.now(),
-      inr: inrData.prices,
-      usdt: usdData.prices,
-    };
+    const nowSec = Math.floor(Date.now() / 1000);
+    const startSec = nowSec - LOOKBACK_DAYS * 24 * 60 * 60;
+    const url = `${API_BASE}/klines?symbol=${symbol}&interval=1d&startTime=${startSec}&endTime=${nowSec}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      if (res.status === 429) {
+        throw new Error("Rate limited. Please wait a moment and try again.");
+      }
+      throw new Error(`Request failed (${res.status})`);
+    }
+    const klines = await res.json();
 
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+      localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), klines }));
     } catch (_) {
       // storage full or unavailable, safe to ignore
     }
 
-    return payload;
+    return klines;
   }
 
-  function findPriceForDate(map, dateStr) {
+  function findPriceForDate(currency, dateStr) {
+    const map = priceHistory[currency];
     if (map.has(dateStr)) {
       return { price: map.get(dateStr), actualDate: dateStr };
     }
     // fall back to the closest earlier available date
     let fallback = null;
-    for (const d of sortedDates) {
+    for (const d of sortedDates[currency]) {
       if (d <= dateStr) fallback = d;
       else break;
     }
@@ -127,69 +106,48 @@
     errorEl.textContent = "";
   }
 
-  function showApiKeySetup(errorMsg) {
-    statusEl.classList.add("hidden");
-    formEl.classList.add("hidden");
-    apiKeySetupEl.classList.remove("hidden");
-    apiKeyErrorEl.textContent = errorMsg || "";
-    apiKeyErrorEl.classList.toggle("hidden", !errorMsg);
+  async function loadCurrency(currency) {
+    const klines = await fetchKlines(SYMBOLS[currency]);
+    if (!klines.length) {
+      throw new Error("No data returned.");
+    }
+    priceHistory[currency] = buildMap(klines);
+    sortedDates[currency] = [...priceHistory[currency].keys()].sort();
+    const maxDate = sortedDates[currency][sortedDates[currency].length - 1];
+    currentPrices[currency] = priceHistory[currency].get(maxDate);
   }
 
-  async function loadAndRender() {
-    apiKeySetupEl.classList.add("hidden");
-    statusEl.classList.remove("hidden", "error-text");
+  async function init() {
+    statusEl.classList.remove("hidden");
     statusEl.textContent = "Loading Bitcoin price history…";
 
     try {
-      const data = await loadHistory();
-      priceHistory.inr = buildMap(data.inr);
-      priceHistory.usdt = buildMap(data.usdt);
-      sortedDates = [...priceHistory.inr.keys()].sort();
-
-      currentPrices.inr = data.inr[data.inr.length - 1][1];
-      currentPrices.usdt = data.usdt[data.usdt.length - 1][1];
-
-      const minDate = sortedDates[0];
-      const maxDate = sortedDates[sortedDates.length - 1];
-      dateEl.min = minDate;
-      dateEl.max = maxDate;
-      dateHintEl.textContent = `Data available from ${minDate} to ${maxDate}`;
-
-      statusEl.classList.add("hidden");
-      formEl.classList.remove("hidden");
+      await loadCurrency("inr");
     } catch (err) {
-      if (err instanceof ApiKeyError) {
-        localStorage.removeItem(API_KEY_STORAGE_KEY);
-        showApiKeySetup(err.message);
-        return;
-      }
       statusEl.textContent = `Couldn't load Bitcoin price history: ${err.message}`;
       statusEl.classList.add("error-text");
-    }
-  }
-
-  saveKeyBtn.addEventListener("click", () => {
-    const key = apiKeyInputEl.value.trim();
-    if (!key) {
-      apiKeyErrorEl.textContent = "Please paste your API key.";
-      apiKeyErrorEl.classList.remove("hidden");
       return;
     }
-    localStorage.setItem(API_KEY_STORAGE_KEY, key);
-    loadAndRender();
-  });
 
-  function init() {
-    if (!getStoredApiKey()) {
-      showApiKeySetup();
-      return;
+    try {
+      await loadCurrency("usdt");
+    } catch (_) {
+      usdtOptionEl.disabled = true;
+      usdtOptionEl.textContent = "USDT (unavailable)";
     }
-    loadAndRender();
+
+    const minDate = sortedDates.inr[0];
+    const maxDate = sortedDates.inr[sortedDates.inr.length - 1];
+    dateEl.min = minDate;
+    dateEl.max = maxDate;
+    dateHintEl.textContent = `Data available from ${minDate} to ${maxDate}`;
+
+    statusEl.classList.add("hidden");
+    formEl.classList.remove("hidden");
   }
 
   function calculate(dateStr, amount, currency) {
-    const map = priceHistory[currency];
-    const found = findPriceForDate(map, dateStr);
+    const found = findPriceForDate(currency, dateStr);
     if (!found) {
       throw new Error("No price data available for that date.");
     }
