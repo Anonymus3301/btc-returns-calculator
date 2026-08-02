@@ -1,6 +1,6 @@
 (() => {
   const API_BASE = "https://api.coingecko.com/api/v3";
-  const CACHE_KEY = "btc-history-cache-v1";
+  const CACHE_KEY = "btc-history-cache-v2";
   const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
   const API_KEY_STORAGE_KEY = "cg-demo-api-key";
 
@@ -82,8 +82,8 @@
     }
 
     const [inrData, usdData] = await Promise.all([
-      fetchJson(`${API_BASE}/coins/bitcoin/market_chart?vs_currency=inr&days=max`),
-      fetchJson(`${API_BASE}/coins/bitcoin/market_chart?vs_currency=usd&days=max`),
+      fetchJson(`${API_BASE}/coins/bitcoin/market_chart?vs_currency=inr&days=365`),
+      fetchJson(`${API_BASE}/coins/bitcoin/market_chart?vs_currency=usd&days=365`),
     ]);
 
     const payload = {

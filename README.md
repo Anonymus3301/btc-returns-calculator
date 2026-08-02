@@ -8,9 +8,10 @@ Bitcoin's historical and current price.
 
 - On first load, the app asks for a free CoinGecko Demo API key (see
   [API key setup](#api-key-setup) below) and stores it in `localStorage`.
-- It then fetches Bitcoin's full daily closing-price history in INR and USD
-  (used as a 1:1 proxy for USDT) from the [CoinGecko](https://www.coingecko.com)
-  API, and caches it in `localStorage` for an hour to avoid refetching.
+- It then fetches Bitcoin's daily closing-price history for the past 365 days
+  in INR and USD (used as a 1:1 proxy for USDT) from the
+  [CoinGecko](https://www.coingecko.com) API, and caches it in `localStorage`
+  for an hour to avoid refetching.
 - You pick an investment date and enter an amount + currency.
 - The app looks up the BTC price on that date, computes how much BTC that
   amount would have bought, and multiplies it by the current price to show
@@ -44,7 +45,8 @@ CoinGecko's public API now requires a free "Demo" API key (100 requests/min,
 
 - USDT is treated as pegged 1:1 to USD, since CoinGecko doesn't provide a
   separate long-running USDT-denominated BTC history.
-- Historical data goes back to CoinGecko's earliest available BTC record
-  (~April 2013); the date picker is bounded to the available range.
+- CoinGecko's free Demo plan limits historical data to the past 365 days;
+  the date picker is bounded to that range. Full history requires a paid
+  CoinGecko plan.
 - The CoinGecko API is rate-limited; if you hit a rate limit, wait a moment
   and retry.
