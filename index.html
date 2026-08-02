@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Bitcoin Returns Calculator</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">₿</div>
+      <h1>Bitcoin Returns Calculator</h1>
+      <p class="subtitle">See what your Bitcoin investment would be worth today.</p>
+    </header>
+
+    <main class="card">
+      <div id="status" class="status">Loading Bitcoin price history…</div>
+
+      <form id="calc-form" class="calc-form hidden">
+        <div class="field">
+          <label for="date">Investment date</label>
+          <input type="date" id="date" name="date" required />
+          <span class="hint" id="date-hint"></span>
+        </div>
+
+        <div class="field">
+          <label for="amount">Amount invested</label>
+          <div class="amount-row">
+            <input type="number" id="amount" name="amount" min="0" step="any" placeholder="e.g. 10000" required />
+            <select id="currency" name="currency">
+              <option value="inr">INR (₹)</option>
+              <option value="usdt">USDT ($)</option>
+            </select>
+          </div>
+        </div>
+
+        <button type="submit" id="submit-btn">Calculate returns</button>
+      </form>
+
+      <div id="error" class="error hidden"></div>
+
+      <section id="result" class="result hidden">
+        <div class="result-grid">
+          <div class="result-item">
+            <span class="result-label">BTC price on invest date</span>
+            <span class="result-value" id="res-buy-price">-</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">BTC acquired</span>
+            <span class="result-value" id="res-btc-qty">-</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">Current BTC price</span>
+            <span class="result-value" id="res-current-price">-</span>
+          </div>
+          <div class="result-item">
+            <span class="result-label">Current value</span>
+            <span class="result-value" id="res-current-value">-</span>
+          </div>
+        </div>
+
+        <div class="headline" id="res-headline">
+          <span class="headline-amount" id="res-gain">-</span>
+          <span class="headline-percent" id="res-percent">-</span>
+        </div>
+        <div class="days-held" id="res-days">-</div>
+      </section>
+    </main>
+
+    <footer>
+      <p>Historical &amp; live prices via <a href="https://www.coingecko.com" target="_blank" rel="noopener">CoinGecko</a>. USDT is treated as 1:1 with USD.</p>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
