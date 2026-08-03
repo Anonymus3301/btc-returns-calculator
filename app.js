@@ -58,9 +58,13 @@
       }
     }
 
-    const nowSec = Math.floor(Date.now() / 1000);
-    const startSec = nowSec - LOOKBACK_DAYS * 24 * 60 * 60;
-    const url = `${API_BASE}/klines?symbol=${symbol}&interval=1d&startTime=${startSec}&endTime=${nowSec}`;
+    // The API only returns data for day-aligned (UTC midnight) start/end
+    // timestamps; a non-aligned range silently returns an empty array.
+    const DAY_SEC = 24 * 60 * 60;
+    const todayMidnightSec = Math.floor(Date.now() / (DAY_SEC * 1000)) * DAY_SEC;
+    const endSec = todayMidnightSec + DAY_SEC;
+    const startSec = endSec - LOOKBACK_DAYS * DAY_SEC;
+    const url = `${API_BASE}/klines?symbol=${symbol}&interval=1d&startTime=${startSec}&endTime=${endSec}`;
     const res = await fetch(url);
     if (!res.ok) {
       if (res.status === 429) {
