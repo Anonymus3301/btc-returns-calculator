@@ -2,7 +2,7 @@
   const API_BASE = "https://www.zebapi.com/api/v2/market";
   const SYMBOLS = { inr: "BTC-INR", usdt: "BTC-USDT" };
   const LOOKBACK_DAYS = 730;
-  const CACHE_PREFIX = "btc-klines-v1-";
+  const CACHE_PREFIX = "btc-klines-v2-";
   const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
   const statusEl = document.getElementById("status");
@@ -50,7 +50,11 @@
     if (cachedRaw) {
       try {
         const cached = JSON.parse(cachedRaw);
-        if (Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+        if (
+          Array.isArray(cached.klines) &&
+          cached.klines.length > 0 &&
+          Date.now() - cached.fetchedAt < CACHE_TTL_MS
+        ) {
           return cached.klines;
         }
       } catch (_) {
@@ -74,10 +78,12 @@
     }
     const klines = await res.json();
 
-    try {
-      localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), klines }));
-    } catch (_) {
-      // storage full or unavailable, safe to ignore
+    if (Array.isArray(klines) && klines.length > 0) {
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), klines }));
+      } catch (_) {
+        // storage full or unavailable, safe to ignore
+      }
     }
 
     return klines;
