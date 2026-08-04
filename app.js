@@ -9,7 +9,7 @@
 
   const API_BASE = "https://www.zebapi.com/api/v2/market";
   const SYMBOLS = { inr: "BTC-INR", usdt: "BTC-USDT" };
-  const LOOKBACK_DAYS = 730;
+  const START_DATE_SEC = Date.UTC(2020, 2, 10) / 1000; // 2020-03-10 UTC
   const CACHE_PREFIX = "btc-klines-v2-";
   const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -80,7 +80,7 @@
     const DAY_SEC = 24 * 60 * 60;
     const todayMidnightSec = Math.floor(Date.now() / (DAY_SEC * 1000)) * DAY_SEC;
     const endSec = todayMidnightSec + DAY_SEC;
-    const startSec = endSec - LOOKBACK_DAYS * DAY_SEC;
+    const startSec = START_DATE_SEC;
     const url = `${API_BASE}/klines?symbol=${symbol}&interval=1d&startTime=${startSec}&endTime=${endSec}`;
     log(`${symbol}: fetching`, url);
 

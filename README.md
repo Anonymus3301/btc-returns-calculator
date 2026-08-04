@@ -6,11 +6,11 @@ Bitcoin's historical and current price.
 
 ## How it works
 
-- On load, the app fetches Bitcoin's daily closing-price history (past 2
-  years) for `BTC-INR` from [ZebPay](https://zebpay.com)'s public klines API,
-  and caches it in `localStorage` for an hour to avoid refetching. It also
-  tries `BTC-USDT`; if that pair isn't available, the USDT option is disabled
-  and INR still works normally.
+- On load, the app fetches Bitcoin's daily closing-price history (from
+  2020-03-10 to today) for `BTC-INR` from [ZebPay](https://zebpay.com)'s
+  public klines API, and caches it in `localStorage` for an hour to avoid
+  refetching. It also tries `BTC-USDT`; if that pair isn't available, the
+  USDT option is disabled and INR still works normally.
 - You pick an investment date and enter an amount + currency.
 - The app looks up the BTC closing price on that date, computes how much BTC
   that amount would have bought, and multiplies it by the current price to
@@ -34,9 +34,11 @@ to any static host (GitHub Pages, Netlify, Vercel, S3, etc.).
 - Price data comes directly from ZebPay's public market API
   (`www.zebapi.com/api/v2/market/klines`), the same endpoint zebpay.com's own
   site uses — no API key needed.
-- History is limited to the last 2 years by default (`LOOKBACK_DAYS` in
-  `app.js`); the date picker is bounded to whatever range the API actually
-  returns.
+- History starts from a fixed date (`START_DATE_SEC` in `app.js`, currently
+  2020-03-10); the date picker is bounded to whatever range the API actually
+  returns. If the API caps how many candles it returns per request, the
+  earliest available date may end up later than the requested start — check
+  the `[btc-calc]` console logs, which report the actual min/max date loaded.
 - This relies on an undocumented third-party endpoint with permissive CORS
   for zebpay.com's own frontend; if ZebPay changes or restricts it, the app's
   status area will show a fetch error.
