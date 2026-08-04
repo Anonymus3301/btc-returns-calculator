@@ -27,8 +27,6 @@
   const usdtOptionEl = document.getElementById("usdt-option");
   const errorEl = document.getElementById("error");
   const resultEl = document.getElementById("result");
-  const sipFrequencyFieldEl = document.getElementById("sip-frequency-field");
-  const sipFrequencyEl = document.getElementById("sip-frequency");
   const investTypeRadios = document.querySelectorAll('input[name="invest-type"]');
   const buyPriceLabelEl = document.getElementById("res-buy-price-label");
   const totalInvestedItemEl = document.getElementById("res-total-invested-item");
@@ -196,20 +194,15 @@
 
   function updateFormForType() {
     const isSip = getInvestType() === "sip";
-    sipFrequencyFieldEl.classList.toggle("hidden", !isSip);
     dateLabelEl.textContent = isSip ? "SIP start date" : "Investment date";
-    amountLabelEl.textContent = isSip ? "Amount per installment" : "Amount invested";
+    amountLabelEl.textContent = isSip ? "Amount per month" : "Amount invested";
   }
 
   investTypeRadios.forEach((radio) => radio.addEventListener("change", updateFormForType));
 
-  function addPeriod(date, frequency) {
+  function addMonth(date) {
     const next = new Date(date);
-    if (frequency === "weekly") {
-      next.setUTCDate(next.getUTCDate() + 7);
-    } else {
-      next.setUTCMonth(next.getUTCMonth() + 1);
-    }
+    next.setUTCMonth(next.getUTCMonth() + 1);
     return next;
   }
 
@@ -295,7 +288,7 @@
     return { buyPrice, currentPrice, btcQty, currentValue, gain, percent, days, actualDate: found.actualDate };
   }
 
-  function calculateSip(startDateStr, amountPerInstallment, currency, frequency) {
+  function calculateSip(startDateStr, amountPerInstallment, currency) {
     const maxDateStr = dateEl.max;
     let cursor = new Date(startDateStr + "T00:00:00Z");
     const maxDate = new Date(maxDateStr + "T00:00:00Z");
@@ -314,7 +307,7 @@
         installments++;
         lastActualDate = found.actualDate;
       }
-      cursor = addPeriod(cursor, frequency);
+      cursor = addMonth(cursor);
     }
 
     if (installments === 0) {
@@ -350,14 +343,13 @@
     const dateStr = dateEl.value;
     const amount = parseFloat(amountEl.value);
     const currency = currencyEl.value;
-    const frequency = sipFrequencyEl.value;
 
     if (!dateStr) {
       showError(investType === "sip" ? "Please choose a SIP start date." : "Please choose an investment date.");
       return;
     }
     if (!amount || amount <= 0) {
-      showError(investType === "sip" ? "Please enter a per-installment amount greater than 0." : "Please enter an amount greater than 0.");
+      showError(investType === "sip" ? "Please enter a monthly amount greater than 0." : "Please enter an amount greater than 0.");
       return;
     }
     if (dateStr < dateEl.min || dateStr > dateEl.max) {
@@ -367,7 +359,7 @@
 
     try {
       const r = investType === "sip"
-        ? calculateSip(dateStr, amount, currency, frequency)
+        ? calculateSip(dateStr, amount, currency)
         : calculate(dateStr, amount, currency);
 
       buyPriceLabelEl.textContent = investType === "sip" ? "Average buy price" : "BTC price on invest date";
@@ -396,7 +388,7 @@
         installmentsItemEl.classList.remove("hidden");
         document.getElementById("res-total-invested").textContent = formatMoney(r.totalInvested, currency);
         document.getElementById("res-installments").textContent =
-          `${r.installments} (${frequency})`;
+          `${r.installments} (monthly)`;
         daysEl.textContent = `From ${r.startDate} to ${r.lastDate}`;
       } else {
         totalInvestedItemEl.classList.add("hidden");
