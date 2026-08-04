@@ -76,7 +76,8 @@
       }
       throw new Error(`Request failed (${res.status})`);
     }
-    const klines = await res.json();
+    const body = await res.json();
+    const klines = Array.isArray(body) ? body : body.data;
 
     if (Array.isArray(klines) && klines.length > 0) {
       try {
@@ -118,7 +119,7 @@
 
   async function loadCurrency(currency) {
     const klines = await fetchKlines(SYMBOLS[currency]);
-    if (!klines.length) {
+    if (!Array.isArray(klines) || klines.length === 0) {
       throw new Error("No data returned.");
     }
     priceHistory[currency] = buildMap(klines);
