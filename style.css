@@ -267,6 +267,130 @@ button#submit-btn:disabled {
   margin-top: 10px;
 }
 
+.chart-section {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.chart-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 12px;
+}
+
+.chart-legend {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 10px;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-swatch {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.chart-svg-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.chart-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  overflow: visible;
+  touch-action: pan-y;
+}
+
+.chart-axis-text {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.chart-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.chart-axis-line {
+  stroke: var(--muted);
+  stroke-width: 1;
+}
+
+.chart-crosshair {
+  stroke: var(--muted);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.chart-hover-rect {
+  cursor: crosshair;
+}
+
+.chart-hover-rect:focus {
+  outline: none;
+}
+
+.chart-tooltip {
+  position: absolute;
+  pointer-events: none;
+  background: #1c2028;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.76rem;
+  color: var(--text);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -110%);
+  transition: opacity 0.1s ease;
+  z-index: 5;
+}
+
+.chart-tooltip-date {
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-tooltip-swatch {
+  width: 10px;
+  height: 2px;
+  display: inline-block;
+  border-radius: 1px;
+  flex-shrink: 0;
+}
+
+.chart-tooltip-label {
+  color: var(--muted);
+}
+
+.chart-tooltip-value {
+  font-weight: 600;
+  margin-left: auto;
+  padding-left: 10px;
+}
+
 footer {
   text-align: center;
   margin-top: 20px;

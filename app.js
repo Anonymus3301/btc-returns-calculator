@@ -31,6 +31,8 @@
   const buyPriceLabelEl = document.getElementById("res-buy-price-label");
   const totalInvestedItemEl = document.getElementById("res-total-invested-item");
   const installmentsItemEl = document.getElementById("res-installments-item");
+  const chartSectionEl = document.getElementById("chart-section");
+  const chartRootEl = document.getElementById("chart-root");
 
   // currency -> Map(dateStr -> closingPrice)
   let priceHistory = { inr: new Map(), usdt: new Map() };
@@ -334,10 +336,62 @@
     };
   }
 
+  // Builds a {date, invested, value} series for the chart, day by day from
+  // the first relevant date through the last available price date.
+  function buildTimeSeries(investType, dateStr, amount, currency) {
+    const dates = sortedDates[currency];
+    const map = priceHistory[currency];
+
+    if (investType === "lumpsum") {
+      const found = findPriceForDate(currency, dateStr);
+      if (!found) return [];
+      const btcHeld = amount / found.price;
+      const startIdx = dates.indexOf(found.actualDate);
+      const series = [];
+      for (let i = startIdx; i < dates.length; i++) {
+        const d = dates[i];
+        series.push({ date: d, invested: amount, value: btcHeld * map.get(d) });
+      }
+      return series;
+    }
+
+    // SIP: walk the monthly installment schedule to find which real trading
+    // dates each installment lands on, then merge-walk that against the full
+    // daily date list so the value line moves with price on non-installment
+    // days too.
+    const maxDateStr = dateEl.max;
+    let cursor = new Date(dateStr + "T00:00:00Z");
+    const maxDate = new Date(maxDateStr + "T00:00:00Z");
+    const installmentDates = [];
+    while (cursor <= maxDate) {
+      const found = findPriceForDate(currency, cursor.toISOString().slice(0, 10));
+      if (found) installmentDates.push(found.actualDate);
+      cursor = addMonth(cursor);
+    }
+    if (installmentDates.length === 0) return [];
+
+    const startIdx = dates.indexOf(installmentDates[0]);
+    let cumBtc = 0;
+    let cumInvested = 0;
+    let instIdx = 0;
+    const series = [];
+    for (let i = startIdx; i < dates.length; i++) {
+      const d = dates[i];
+      while (instIdx < installmentDates.length && installmentDates[instIdx] === d) {
+        cumBtc += amount / map.get(d);
+        cumInvested += amount;
+        instIdx++;
+      }
+      series.push({ date: d, invested: cumInvested, value: cumBtc * map.get(d) });
+    }
+    return series;
+  }
+
   formEl.addEventListener("submit", (e) => {
     e.preventDefault();
     clearError();
     resultEl.classList.add("hidden");
+    chartSectionEl.classList.add("hidden");
 
     const investType = getInvestType();
     const dateStr = dateEl.value;
@@ -397,6 +451,12 @@
       }
 
       resultEl.classList.remove("hidden");
+
+      const series = buildTimeSeries(investType, dateStr, amount, currency);
+      if (series.length >= 2 && typeof window.renderPortfolioChart === "function") {
+        window.renderPortfolioChart(chartRootEl, series, currency, formatMoney);
+        chartSectionEl.classList.remove("hidden");
+      }
     } catch (err) {
       showError(err.message);
     }
