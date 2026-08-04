@@ -19,12 +19,20 @@
   const statusEl = document.getElementById("status");
   const formEl = document.getElementById("calc-form");
   const dateEl = document.getElementById("date");
+  const dateLabelEl = document.getElementById("date-label");
   const dateHintEl = document.getElementById("date-hint");
   const amountEl = document.getElementById("amount");
+  const amountLabelEl = document.getElementById("amount-label");
   const currencyEl = document.getElementById("currency");
   const usdtOptionEl = document.getElementById("usdt-option");
   const errorEl = document.getElementById("error");
   const resultEl = document.getElementById("result");
+  const sipFrequencyFieldEl = document.getElementById("sip-frequency-field");
+  const sipFrequencyEl = document.getElementById("sip-frequency");
+  const investTypeRadios = document.querySelectorAll('input[name="invest-type"]');
+  const buyPriceLabelEl = document.getElementById("res-buy-price-label");
+  const totalInvestedItemEl = document.getElementById("res-total-invested-item");
+  const installmentsItemEl = document.getElementById("res-installments-item");
 
   // currency -> Map(dateStr -> closingPrice)
   let priceHistory = { inr: new Map(), usdt: new Map() };
@@ -179,6 +187,32 @@
     return null;
   }
 
+  function getInvestType() {
+    for (const radio of investTypeRadios) {
+      if (radio.checked) return radio.value;
+    }
+    return "lumpsum";
+  }
+
+  function updateFormForType() {
+    const isSip = getInvestType() === "sip";
+    sipFrequencyFieldEl.classList.toggle("hidden", !isSip);
+    dateLabelEl.textContent = isSip ? "SIP start date" : "Investment date";
+    amountLabelEl.textContent = isSip ? "Amount per installment" : "Amount invested";
+  }
+
+  investTypeRadios.forEach((radio) => radio.addEventListener("change", updateFormForType));
+
+  function addPeriod(date, frequency) {
+    const next = new Date(date);
+    if (frequency === "weekly") {
+      next.setUTCDate(next.getUTCDate() + 7);
+    } else {
+      next.setUTCMonth(next.getUTCMonth() + 1);
+    }
+    return next;
+  }
+
   function showError(msg) {
     errorEl.textContent = msg;
     errorEl.classList.remove("hidden");
@@ -261,21 +295,69 @@
     return { buyPrice, currentPrice, btcQty, currentValue, gain, percent, days, actualDate: found.actualDate };
   }
 
+  function calculateSip(startDateStr, amountPerInstallment, currency, frequency) {
+    const maxDateStr = dateEl.max;
+    let cursor = new Date(startDateStr + "T00:00:00Z");
+    const maxDate = new Date(maxDateStr + "T00:00:00Z");
+
+    let totalBtc = 0;
+    let totalInvested = 0;
+    let installments = 0;
+    let lastActualDate = null;
+
+    while (cursor <= maxDate) {
+      const dStr = cursor.toISOString().slice(0, 10);
+      const found = findPriceForDate(currency, dStr);
+      if (found) {
+        totalBtc += amountPerInstallment / found.price;
+        totalInvested += amountPerInstallment;
+        installments++;
+        lastActualDate = found.actualDate;
+      }
+      cursor = addPeriod(cursor, frequency);
+    }
+
+    if (installments === 0) {
+      throw new Error("No SIP installments fall within the available price history.");
+    }
+
+    const currentPrice = currentPrices[currency];
+    const currentValue = totalBtc * currentPrice;
+    const gain = currentValue - totalInvested;
+    const percent = (gain / totalInvested) * 100;
+    const avgBuyPrice = totalInvested / totalBtc;
+
+    return {
+      buyPrice: avgBuyPrice,
+      currentPrice,
+      btcQty: totalBtc,
+      currentValue,
+      gain,
+      percent,
+      totalInvested,
+      installments,
+      startDate: startDateStr,
+      lastDate: lastActualDate,
+    };
+  }
+
   formEl.addEventListener("submit", (e) => {
     e.preventDefault();
     clearError();
     resultEl.classList.add("hidden");
 
+    const investType = getInvestType();
     const dateStr = dateEl.value;
     const amount = parseFloat(amountEl.value);
     const currency = currencyEl.value;
+    const frequency = sipFrequencyEl.value;
 
     if (!dateStr) {
-      showError("Please choose an investment date.");
+      showError(investType === "sip" ? "Please choose a SIP start date." : "Please choose an investment date.");
       return;
     }
     if (!amount || amount <= 0) {
-      showError("Please enter an amount greater than 0.");
+      showError(investType === "sip" ? "Please enter a per-installment amount greater than 0." : "Please enter an amount greater than 0.");
       return;
     }
     if (dateStr < dateEl.min || dateStr > dateEl.max) {
@@ -284,10 +366,15 @@
     }
 
     try {
-      const r = calculate(dateStr, amount, currency);
+      const r = investType === "sip"
+        ? calculateSip(dateStr, amount, currency, frequency)
+        : calculate(dateStr, amount, currency);
 
+      buyPriceLabelEl.textContent = investType === "sip" ? "Average buy price" : "BTC price on invest date";
       document.getElementById("res-buy-price").textContent =
-        formatMoney(r.buyPrice, currency) + (r.actualDate !== dateStr ? ` (on ${r.actualDate})` : "");
+        investType === "sip"
+          ? formatMoney(r.buyPrice, currency)
+          : formatMoney(r.buyPrice, currency) + (r.actualDate !== dateStr ? ` (on ${r.actualDate})` : "");
       document.getElementById("res-btc-qty").textContent = formatBtc(r.btcQty);
       document.getElementById("res-current-price").textContent = formatMoney(r.currentPrice, currency);
       document.getElementById("res-current-value").textContent = formatMoney(r.currentValue, currency);
@@ -303,7 +390,19 @@
       headlineEl.classList.remove("positive", "negative");
       headlineEl.classList.add(r.gain >= 0 ? "positive" : "negative");
 
-      document.getElementById("res-days").textContent = `Held for ${r.days.toLocaleString()} day${r.days === 1 ? "" : "s"}`;
+      const daysEl = document.getElementById("res-days");
+      if (investType === "sip") {
+        totalInvestedItemEl.classList.remove("hidden");
+        installmentsItemEl.classList.remove("hidden");
+        document.getElementById("res-total-invested").textContent = formatMoney(r.totalInvested, currency);
+        document.getElementById("res-installments").textContent =
+          `${r.installments} (${frequency})`;
+        daysEl.textContent = `From ${r.startDate} to ${r.lastDate}`;
+      } else {
+        totalInvestedItemEl.classList.add("hidden");
+        installmentsItemEl.classList.add("hidden");
+        daysEl.textContent = `Held for ${r.days.toLocaleString()} day${r.days === 1 ? "" : "s"}`;
+      }
 
       resultEl.classList.remove("hidden");
     } catch (err) {
