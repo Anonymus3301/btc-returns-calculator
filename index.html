@@ -49,6 +49,24 @@
           </div>
         </div>
 
+        <div class="field hidden" id="stepup-field">
+          <label for="stepup">Annual step-up (%)</label>
+          <input type="number" id="stepup" name="stepup" min="0" max="100" step="0.1" placeholder="e.g. 10 (optional)" />
+          <span class="hint">Increases your monthly amount by this % every 12 installments. Leave blank for a flat SIP.</span>
+        </div>
+
+        <div class="field">
+          <label class="checkbox-label">
+            <input type="checkbox" id="fd-toggle" />
+            <span>Compare to a Fixed Deposit</span>
+          </label>
+        </div>
+
+        <div class="field hidden" id="fd-rate-field">
+          <label for="fd-rate">FD annual rate (%)</label>
+          <input type="number" id="fd-rate" name="fd-rate" min="0" max="30" step="0.1" value="7" />
+        </div>
+
         <button type="submit" id="submit-btn">Calculate returns</button>
       </form>
 
@@ -80,6 +98,14 @@
             <span class="result-label">Installments</span>
             <span class="result-value" id="res-installments">-</span>
           </div>
+          <div class="result-item">
+            <span class="result-label">Annualized return (XIRR)</span>
+            <span class="result-value" id="res-xirr">-</span>
+          </div>
+          <div class="result-item hidden" id="res-fd-item">
+            <span class="result-label">Fixed Deposit equivalent</span>
+            <span class="result-value" id="res-fd-value">-</span>
+          </div>
         </div>
 
         <div class="headline" id="res-headline">
@@ -87,10 +113,18 @@
           <span class="headline-percent" id="res-percent">-</span>
         </div>
         <div class="days-held" id="res-days">-</div>
+
+        <div class="result-actions">
+          <button type="button" class="action-btn" id="copy-link-btn">Copy share link</button>
+          <button type="button" class="action-btn" id="export-csv-btn">Export CSV</button>
+        </div>
       </section>
 
       <section id="chart-section" class="chart-section hidden">
-        <h2 class="chart-title">Portfolio value over time</h2>
+        <div class="chart-header">
+          <h2 class="chart-title">Portfolio value over time</h2>
+          <button type="button" class="action-btn" id="export-png-btn">Export PNG</button>
+        </div>
         <div id="chart-root"></div>
       </section>
     </main>

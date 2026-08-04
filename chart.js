@@ -6,6 +6,12 @@
   const COLORS = {
     invested: "#3987e5",
     value: "#199e70",
+    fd: "#c98500",
+  };
+  const LABELS = {
+    invested: "Invested",
+    value: "Portfolio value",
+    fd: "Fixed Deposit",
   };
 
   function svgEl(tag, attrs) {
@@ -14,6 +20,16 @@
       el.setAttribute(key, attrs[key]);
     }
     return el;
+  }
+
+  function chartTheme() {
+    const cs = getComputedStyle(document.documentElement);
+    return {
+      surface: cs.getPropertyValue("--card").trim() || "#14171c",
+      muted: cs.getPropertyValue("--muted").trim() || "#8b93a1",
+      border: cs.getPropertyValue("--border").trim() || "#262b33",
+      text: cs.getPropertyValue("--text").trim() || "#e9edf1",
+    };
   }
 
   function niceStep(maxValue, tickCount) {
@@ -40,6 +56,12 @@
     if (abs >= 1e6) return (value / 1e6).toFixed(1) + "M";
     if (abs >= 1e3) return (value / 1e3).toFixed(1) + "K";
     return value.toFixed(0);
+  }
+
+  function activeKeys(series) {
+    const keys = ["invested", "value"];
+    if (series[0].fd != null) keys.push("fd");
+    return keys;
   }
 
   function legendItem(label, color) {
@@ -73,39 +95,24 @@
     return row;
   }
 
-  // series: [{date: "YYYY-MM-DD", invested: number, value: number}, ...] ascending by date
-  function renderPortfolioChart(rootEl, series, currency, formatMoney) {
-    rootEl.textContent = "";
-    if (!series || series.length < 2) return;
-
-    const legend = document.createElement("div");
-    legend.className = "chart-legend";
-    legend.appendChild(legendItem("Invested", COLORS.invested));
-    legend.appendChild(legendItem("Portfolio value", COLORS.value));
-    rootEl.appendChild(legend);
-
-    const wrap = document.createElement("div");
-    wrap.className = "chart-svg-wrap";
-    rootEl.appendChild(wrap);
-
+  // Builds the plot's static geometry (gridlines, axes, lines, end dots) as
+  // pure SVG with presentation attributes — no CSS classes for anything
+  // that needs to survive being serialized and rendered standalone (PNG
+  // export). Returns { svg, xForIndex, yForValue, keys }.
+  function buildStaticChart(series, currency, theme) {
+    const keys = activeKeys(series);
     const svg = svgEl("svg", {
       class: "chart-svg",
       viewBox: `0 0 ${WIDTH} ${HEIGHT}`,
       preserveAspectRatio: "xMidYMid meet",
     });
-    wrap.appendChild(svg);
-
-    const tooltip = document.createElement("div");
-    tooltip.className = "chart-tooltip";
-    wrap.appendChild(tooltip);
 
     const plotW = WIDTH - MARGIN.left - MARGIN.right;
     const plotH = HEIGHT - MARGIN.top - MARGIN.bottom;
-
     const times = series.map((p) => new Date(p.date + "T00:00:00Z").getTime());
     const minT = times[0];
     const maxT = times[times.length - 1];
-    const maxValueRaw = series.reduce((m, p) => Math.max(m, p.invested, p.value), 0);
+    const maxValueRaw = series.reduce((m, p) => Math.max(m, ...keys.map((k) => p[k])), 0);
     const yMax = maxValueRaw === 0 ? 1 : maxValueRaw * 1.1;
 
     function xForIndex(i) {
@@ -116,22 +123,26 @@
       return MARGIN.top + plotH - (v / yMax) * plotH;
     }
 
-    // Gridlines + y-axis labels
     const step = niceStep(yMax, 4);
     let guard = 0;
     for (let v = 0; v <= yMax && guard < 20; v += step, guard++) {
       const y = yForValue(v);
-      svg.appendChild(svgEl("line", { class: "chart-gridline", x1: MARGIN.left, x2: WIDTH - MARGIN.right, y1: y, y2: y }));
-      const label = svgEl("text", { class: "chart-axis-text", x: MARGIN.left - 8, y: y + 3, "text-anchor": "end" });
+      svg.appendChild(svgEl("line", {
+        x1: MARGIN.left, x2: WIDTH - MARGIN.right, y1: y, y2: y,
+        stroke: theme.border, "stroke-width": 1,
+      }));
+      const label = svgEl("text", {
+        x: MARGIN.left - 8, y: y + 3, "text-anchor": "end",
+        fill: theme.muted, "font-size": 10,
+      });
       label.textContent = formatCompact(v, currency);
       svg.appendChild(label);
     }
 
-    // X-axis baseline + date labels
     svg.appendChild(svgEl("line", {
-      class: "chart-axis-line",
       x1: MARGIN.left, x2: WIDTH - MARGIN.right,
       y1: HEIGHT - MARGIN.bottom, y2: HEIGHT - MARGIN.bottom,
+      stroke: theme.muted, "stroke-width": 1,
     }));
 
     const tickCount = Math.min(5, series.length);
@@ -139,7 +150,10 @@
       const idx = Math.round((t / (tickCount - 1 || 1)) * (series.length - 1));
       const x = xForIndex(idx);
       const anchor = t === 0 ? "start" : t === tickCount - 1 ? "end" : "middle";
-      const label = svgEl("text", { class: "chart-axis-text", x, y: HEIGHT - MARGIN.bottom + 16, "text-anchor": anchor });
+      const label = svgEl("text", {
+        x, y: HEIGHT - MARGIN.bottom + 16, "text-anchor": anchor,
+        fill: theme.muted, "font-size": 10,
+      });
       label.textContent = series[idx].date;
       svg.appendChild(label);
     }
@@ -148,23 +162,47 @@
       return series.map((p, i) => `${i === 0 ? "M" : "L"} ${xForIndex(i).toFixed(2)} ${yForValue(p[key]).toFixed(2)}`).join(" ");
     }
 
-    svg.appendChild(svgEl("path", {
-      d: buildPath("invested"), fill: "none", stroke: COLORS.invested,
-      "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round",
-    }));
-    svg.appendChild(svgEl("path", {
-      d: buildPath("value"), fill: "none", stroke: COLORS.value,
-      "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round",
-    }));
+    keys.forEach((key) => {
+      svg.appendChild(svgEl("path", {
+        d: buildPath(key), fill: "none", stroke: COLORS[key],
+        "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round",
+      }));
+    });
 
-    const ringColor = getComputedStyle(document.documentElement).getPropertyValue("--card").trim() || "#14171c";
     const lastIdx = series.length - 1;
-    [["invested", COLORS.invested], ["value", COLORS.value]].forEach(([key, color]) => {
+    keys.forEach((key) => {
       const cx = xForIndex(lastIdx);
       const cy = yForValue(series[lastIdx][key]);
-      svg.appendChild(svgEl("circle", { cx, cy, r: 6, fill: ringColor }));
-      svg.appendChild(svgEl("circle", { cx, cy, r: 4, fill: color }));
+      svg.appendChild(svgEl("circle", { cx, cy, r: 6, fill: theme.surface }));
+      svg.appendChild(svgEl("circle", { cx, cy, r: 4, fill: COLORS[key] }));
     });
+
+    return { svg, xForIndex, yForValue, keys, plotW, plotH };
+  }
+
+  // series: [{date: "YYYY-MM-DD", invested, value, fd?}, ...] ascending by date
+  function renderPortfolioChart(rootEl, series, currency, formatMoney) {
+    rootEl.textContent = "";
+    if (!series || series.length < 2) return;
+
+    const theme = chartTheme();
+    const keys = activeKeys(series);
+
+    const legend = document.createElement("div");
+    legend.className = "chart-legend";
+    keys.forEach((key) => legend.appendChild(legendItem(LABELS[key], COLORS[key])));
+    rootEl.appendChild(legend);
+
+    const wrap = document.createElement("div");
+    wrap.className = "chart-svg-wrap";
+    rootEl.appendChild(wrap);
+
+    const { svg, xForIndex, yForValue, plotW, plotH } = buildStaticChart(series, currency, theme);
+    wrap.appendChild(svg);
+
+    const tooltip = document.createElement("div");
+    tooltip.className = "chart-tooltip";
+    wrap.appendChild(tooltip);
 
     const crosshair = svgEl("line", { class: "chart-crosshair", y1: MARGIN.top, y2: HEIGHT - MARGIN.bottom, x1: 0, x2: 0 });
     svg.appendChild(crosshair);
@@ -176,9 +214,11 @@
     });
     svg.appendChild(hoverRect);
 
+    const lastIdx = series.length - 1;
+
     function nearestIndex(mouseX) {
       let lo = 0;
-      let hi = series.length - 1;
+      let hi = lastIdx;
       while (lo < hi) {
         const mid = (lo + hi) >> 1;
         if (xForIndex(mid) < mouseX) lo = mid + 1;
@@ -204,13 +244,14 @@
       dateRow.className = "chart-tooltip-date";
       dateRow.textContent = point.date;
       tooltip.appendChild(dateRow);
-      tooltip.appendChild(tooltipRow("Invested", COLORS.invested, formatMoney(point.invested, currency)));
-      tooltip.appendChild(tooltipRow("Value", COLORS.value, formatMoney(point.value, currency)));
+      keys.forEach((key) => {
+        tooltip.appendChild(tooltipRow(LABELS[key], COLORS[key], formatMoney(point[key], currency)));
+      });
       tooltip.style.opacity = 1;
 
       const wrapRect = wrap.getBoundingClientRect();
       const pxRatio = wrapRect.width / WIDTH;
-      const topValue = Math.max(point.invested, point.value);
+      const topValue = Math.max(...keys.map((k) => point[k]));
       let px = x * pxRatio;
       const py = yForValue(topValue) * (wrapRect.height / HEIGHT);
       const tooltipHalfWidth = 90;
@@ -241,7 +282,83 @@
         evt.preventDefault();
       }
     });
+
+    rootEl._chartSeries = series;
+    rootEl._chartCurrency = currency;
+  }
+
+  // Rebuilds a self-contained export SVG (title + in-SVG legend + the same
+  // static geometry) so the PNG doesn't depend on the page's stylesheet,
+  // then rasterizes it via canvas and triggers a download.
+  function exportChartPng(rootEl, filename) {
+    const series = rootEl._chartSeries;
+    const currency = rootEl._chartCurrency;
+    if (!series) return;
+
+    const theme = chartTheme();
+    const keys = activeKeys(series);
+    const TOP_PAD = 44; // room for title + legend
+    const exportWidth = WIDTH;
+    const exportHeight = HEIGHT + TOP_PAD;
+
+    const svg = svgEl("svg", {
+      xmlns: SVG_NS,
+      width: exportWidth,
+      height: exportHeight,
+      viewBox: `0 0 ${exportWidth} ${exportHeight}`,
+    });
+    svg.appendChild(svgEl("rect", { x: 0, y: 0, width: exportWidth, height: exportHeight, fill: theme.surface }));
+
+    const title = svgEl("text", { x: 16, y: 20, "font-size": 13, "font-weight": 700, fill: theme.text });
+    title.textContent = "Portfolio value over time";
+    svg.appendChild(title);
+
+    keys.forEach((key, i) => {
+      const lx = 16 + i * 150;
+      svg.appendChild(svgEl("line", { x1: lx, x2: lx + 14, y1: 36, y2: 36, stroke: COLORS[key], "stroke-width": 2 }));
+      const label = svgEl("text", { x: lx + 20, y: 40, "font-size": 11, fill: theme.text });
+      label.textContent = LABELS[key];
+      svg.appendChild(label);
+    });
+
+    const { svg: plot } = buildStaticChart(series, currency, theme);
+    const plotGroup = svgEl("g", { transform: `translate(0, ${TOP_PAD})` });
+    while (plot.firstChild) plotGroup.appendChild(plot.firstChild);
+    svg.appendChild(plotGroup);
+
+    const xml = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([xml], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = () => {
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = exportWidth * scale;
+      canvas.height = exportHeight * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(scale, scale);
+      ctx.drawImage(img, 0, 0, exportWidth, exportHeight);
+      URL.revokeObjectURL(url);
+
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const pngUrl = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = pngUrl;
+        a.download = filename || "chart.png";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(pngUrl);
+      }, "image/png");
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
   }
 
   window.renderPortfolioChart = renderPortfolioChart;
+  window.exportChartPng = exportChartPng;
 })();
