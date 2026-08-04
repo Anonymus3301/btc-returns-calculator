@@ -10,8 +10,11 @@
   const API_BASE = "https://www.zebapi.com/api/v2/market";
   const SYMBOLS = { inr: "BTC-INR", usdt: "BTC-USDT" };
   const START_DATE_SEC = Date.UTC(2020, 2, 10) / 1000; // 2020-03-10 UTC
-  const CACHE_PREFIX = "btc-klines-v2-";
+  const CACHE_PREFIX = "btc-klines-v3-";
   const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+  const DAY_SEC = 24 * 60 * 60;
+  const MAX_CANDLES_PER_PAGE = 1000; // API caps each response at 1000 candles
+  const MAX_PAGES = 20; // safety cap against runaway pagination loops
 
   const statusEl = document.getElementById("status");
   const formEl = document.getElementById("calc-form");
@@ -52,37 +55,13 @@
     return qty.toLocaleString("en-US", { maximumFractionDigits: 8 }) + " BTC";
   }
 
-  async function fetchKlines(symbol) {
-    const cacheKey = CACHE_PREFIX + symbol;
-    const cachedRaw = localStorage.getItem(cacheKey);
-    if (cachedRaw) {
-      try {
-        const cached = JSON.parse(cachedRaw);
-        const ageMs = Date.now() - cached.fetchedAt;
-        if (
-          Array.isArray(cached.klines) &&
-          cached.klines.length > 0 &&
-          ageMs < CACHE_TTL_MS
-        ) {
-          log(`${symbol}: using cached data, ${cached.klines.length} candles, age ${Math.round(ageMs / 1000)}s`);
-          return cached.klines;
-        }
-        log(`${symbol}: cache present but stale/invalid (length=${cached.klines && cached.klines.length}, age=${Math.round(ageMs / 1000)}s), refetching`);
-      } catch (e) {
-        log(`${symbol}: corrupt cache entry, ignoring`, e);
-      }
-    } else {
-      log(`${symbol}: no cache entry, fetching fresh`);
-    }
-
-    // The API only returns data for day-aligned (UTC midnight) start/end
-    // timestamps; a non-aligned range silently returns an empty array.
-    const DAY_SEC = 24 * 60 * 60;
-    const todayMidnightSec = Math.floor(Date.now() / (DAY_SEC * 1000)) * DAY_SEC;
-    const endSec = todayMidnightSec + DAY_SEC;
-    const startSec = START_DATE_SEC;
+  // Fetches one page of daily candles. The API only returns data for
+  // day-aligned (UTC midnight) start/end timestamps (a non-aligned range
+  // silently returns an empty array), and caps each response at
+  // MAX_CANDLES_PER_PAGE candles regardless of the requested range.
+  async function fetchKlinesPage(symbol, startSec, endSec) {
     const url = `${API_BASE}/klines?symbol=${symbol}&interval=1d&startTime=${startSec}&endTime=${endSec}`;
-    log(`${symbol}: fetching`, url);
+    log(`${symbol}: fetching page`, url);
 
     let res;
     try {
@@ -112,18 +91,75 @@
     }
 
     const klines = Array.isArray(body) ? body : body.data;
-    log(`${symbol}: parsed klines`, Array.isArray(klines) ? `array of ${klines.length}` : typeof klines, klines);
+    if (!Array.isArray(klines)) {
+      logError(`${symbol}: unexpected response shape`, body);
+      throw new Error("Price API returned an unexpected response shape.");
+    }
+    log(`${symbol}: page returned ${klines.length} candles`);
+    return klines;
+  }
 
-    if (Array.isArray(klines) && klines.length > 0) {
+  async function fetchKlines(symbol) {
+    const cacheKey = CACHE_PREFIX + symbol;
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
       try {
-        localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), klines }));
-        log(`${symbol}: cached ${klines.length} candles`);
+        const cached = JSON.parse(cachedRaw);
+        const ageMs = Date.now() - cached.fetchedAt;
+        if (
+          Array.isArray(cached.klines) &&
+          cached.klines.length > 0 &&
+          ageMs < CACHE_TTL_MS
+        ) {
+          log(`${symbol}: using cached data, ${cached.klines.length} candles, age ${Math.round(ageMs / 1000)}s`);
+          return cached.klines;
+        }
+        log(`${symbol}: cache present but stale/invalid (length=${cached.klines && cached.klines.length}, age=${Math.round(ageMs / 1000)}s), refetching`);
+      } catch (e) {
+        log(`${symbol}: corrupt cache entry, ignoring`, e);
+      }
+    } else {
+      log(`${symbol}: no cache entry, fetching fresh`);
+    }
+
+    const todayMidnightSec = Math.floor(Date.now() / (DAY_SEC * 1000)) * DAY_SEC;
+    const overallEndSec = todayMidnightSec + DAY_SEC;
+
+    let cursor = START_DATE_SEC;
+    let allKlines = [];
+    let pages = 0;
+
+    while (cursor < overallEndSec && pages < MAX_PAGES) {
+      pages++;
+      const pageEndSec = Math.min(cursor + (MAX_CANDLES_PER_PAGE - 1) * DAY_SEC, overallEndSec);
+      const page = await fetchKlinesPage(symbol, cursor, pageEndSec);
+      if (page.length === 0) {
+        log(`${symbol}: empty page at cursor ${cursor}, stopping pagination`);
+        break;
+      }
+      allKlines = allKlines.concat(page);
+
+      const lastOpenTimeSec = page[page.length - 1][0];
+      const nextCursor = lastOpenTimeSec + DAY_SEC;
+      if (nextCursor <= cursor) {
+        log(`${symbol}: pagination cursor didn't advance, stopping to avoid an infinite loop`);
+        break;
+      }
+      cursor = nextCursor;
+    }
+
+    log(`${symbol}: pagination done, ${pages} page(s), ${allKlines.length} total candles`);
+
+    if (allKlines.length > 0) {
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), klines: allKlines }));
+        log(`${symbol}: cached ${allKlines.length} candles`);
       } catch (e) {
         log(`${symbol}: failed to write cache`, e);
       }
     }
 
-    return klines;
+    return allKlines;
   }
 
   function findPriceForDate(currency, dateStr) {
