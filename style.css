@@ -132,11 +132,18 @@ input:focus, select:focus {
   font-size: 0.9rem;
   color: var(--text);
   cursor: pointer;
+  line-height: 1;
 }
 
 .type-option input {
   width: auto;
+  margin: 0;
+  flex-shrink: 0;
   accent-color: var(--accent);
+}
+
+.type-option span {
+  line-height: 1;
 }
 
 .type-option:has(input:checked) {
