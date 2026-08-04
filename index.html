@@ -19,13 +19,35 @@
 
       <form id="calc-form" class="calc-form hidden">
         <div class="field">
-          <label for="date">Investment date</label>
+          <label>Investment type</label>
+          <div class="type-toggle">
+            <label class="type-option">
+              <input type="radio" name="invest-type" value="lumpsum" checked />
+              <span>Lump sum</span>
+            </label>
+            <label class="type-option">
+              <input type="radio" name="invest-type" value="sip" />
+              <span>SIP</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="date" id="date-label">Investment date</label>
           <input type="date" id="date" name="date" required />
           <span class="hint" id="date-hint"></span>
         </div>
 
+        <div class="field hidden" id="sip-frequency-field">
+          <label for="sip-frequency">SIP frequency</label>
+          <select id="sip-frequency" name="sip-frequency">
+            <option value="weekly">Weekly</option>
+            <option value="monthly" selected>Monthly</option>
+          </select>
+        </div>
+
         <div class="field">
-          <label for="amount">Amount invested</label>
+          <label for="amount" id="amount-label">Amount invested</label>
           <div class="amount-row">
             <input type="number" id="amount" name="amount" min="0" step="any" placeholder="e.g. 10000" required />
             <select id="currency" name="currency">
@@ -43,7 +65,7 @@
       <section id="result" class="result hidden">
         <div class="result-grid">
           <div class="result-item">
-            <span class="result-label">BTC price on invest date</span>
+            <span class="result-label" id="res-buy-price-label">BTC price on invest date</span>
             <span class="result-value" id="res-buy-price">-</span>
           </div>
           <div class="result-item">
@@ -57,6 +79,14 @@
           <div class="result-item">
             <span class="result-label">Current value</span>
             <span class="result-value" id="res-current-value">-</span>
+          </div>
+          <div class="result-item hidden" id="res-total-invested-item">
+            <span class="result-label">Total invested</span>
+            <span class="result-value" id="res-total-invested">-</span>
+          </div>
+          <div class="result-item hidden" id="res-installments-item">
+            <span class="result-label">Installments</span>
+            <span class="result-value" id="res-installments">-</span>
           </div>
         </div>
 
