@@ -1,4 +1,12 @@
 (() => {
+  const LOG_PREFIX = "[btc-calc]";
+  function log(...args) {
+    console.log(LOG_PREFIX, ...args);
+  }
+  function logError(...args) {
+    console.error(LOG_PREFIX, ...args);
+  }
+
   const API_BASE = "https://www.zebapi.com/api/v2/market";
   const SYMBOLS = { inr: "BTC-INR", usdt: "BTC-USDT" };
   const LOOKBACK_DAYS = 730;
@@ -50,16 +58,21 @@
     if (cachedRaw) {
       try {
         const cached = JSON.parse(cachedRaw);
+        const ageMs = Date.now() - cached.fetchedAt;
         if (
           Array.isArray(cached.klines) &&
           cached.klines.length > 0 &&
-          Date.now() - cached.fetchedAt < CACHE_TTL_MS
+          ageMs < CACHE_TTL_MS
         ) {
+          log(`${symbol}: using cached data, ${cached.klines.length} candles, age ${Math.round(ageMs / 1000)}s`);
           return cached.klines;
         }
-      } catch (_) {
-        // ignore corrupt cache
+        log(`${symbol}: cache present but stale/invalid (length=${cached.klines && cached.klines.length}, age=${Math.round(ageMs / 1000)}s), refetching`);
+      } catch (e) {
+        log(`${symbol}: corrupt cache entry, ignoring`, e);
       }
+    } else {
+      log(`${symbol}: no cache entry, fetching fresh`);
     }
 
     // The API only returns data for day-aligned (UTC midnight) start/end
@@ -69,21 +82,44 @@
     const endSec = todayMidnightSec + DAY_SEC;
     const startSec = endSec - LOOKBACK_DAYS * DAY_SEC;
     const url = `${API_BASE}/klines?symbol=${symbol}&interval=1d&startTime=${startSec}&endTime=${endSec}`;
-    const res = await fetch(url);
+    log(`${symbol}: fetching`, url);
+
+    let res;
+    try {
+      res = await fetch(url);
+    } catch (e) {
+      logError(`${symbol}: fetch() threw (network/CORS error)`, e);
+      throw new Error(`Network error contacting price API: ${e.message}`);
+    }
+
+    log(`${symbol}: response status`, res.status, res.statusText);
     if (!res.ok) {
       if (res.status === 429) {
         throw new Error("Rate limited. Please wait a moment and try again.");
       }
       throw new Error(`Request failed (${res.status})`);
     }
-    const body = await res.json();
+
+    const rawText = await res.text();
+    log(`${symbol}: raw response length`, rawText.length, "first 300 chars:", rawText.slice(0, 300));
+
+    let body;
+    try {
+      body = JSON.parse(rawText);
+    } catch (e) {
+      logError(`${symbol}: response was not valid JSON`, e);
+      throw new Error("Price API returned invalid JSON.");
+    }
+
     const klines = Array.isArray(body) ? body : body.data;
+    log(`${symbol}: parsed klines`, Array.isArray(klines) ? `array of ${klines.length}` : typeof klines, klines);
 
     if (Array.isArray(klines) && klines.length > 0) {
       try {
         localStorage.setItem(cacheKey, JSON.stringify({ fetchedAt: Date.now(), klines }));
-      } catch (_) {
-        // storage full or unavailable, safe to ignore
+        log(`${symbol}: cached ${klines.length} candles`);
+      } catch (e) {
+        log(`${symbol}: failed to write cache`, e);
       }
     }
 
@@ -118,23 +154,33 @@
   }
 
   async function loadCurrency(currency) {
+    log(`loadCurrency(${currency}): start`);
     const klines = await fetchKlines(SYMBOLS[currency]);
     if (!Array.isArray(klines) || klines.length === 0) {
+      logError(`loadCurrency(${currency}): no usable klines`, klines);
       throw new Error("No data returned.");
     }
     priceHistory[currency] = buildMap(klines);
     sortedDates[currency] = [...priceHistory[currency].keys()].sort();
     const maxDate = sortedDates[currency][sortedDates[currency].length - 1];
     currentPrices[currency] = priceHistory[currency].get(maxDate);
+    log(`loadCurrency(${currency}): done`, {
+      days: sortedDates[currency].length,
+      minDate: sortedDates[currency][0],
+      maxDate,
+      currentPrice: currentPrices[currency],
+    });
   }
 
   async function init() {
+    log("init: starting");
     statusEl.classList.remove("hidden");
     statusEl.textContent = "Loading Bitcoin price history…";
 
     try {
       await loadCurrency("inr");
     } catch (err) {
+      logError("init: INR load failed, aborting", err);
       statusEl.textContent = `Couldn't load Bitcoin price history: ${err.message}`;
       statusEl.classList.add("error-text");
       return;
@@ -142,7 +188,8 @@
 
     try {
       await loadCurrency("usdt");
-    } catch (_) {
+    } catch (err) {
+      log("init: USDT load failed, disabling USDT option", err);
       usdtOptionEl.disabled = true;
       usdtOptionEl.textContent = "USDT (unavailable)";
     }
@@ -155,6 +202,7 @@
 
     statusEl.classList.add("hidden");
     formEl.classList.remove("hidden");
+    log("init: done, form shown");
   }
 
   function calculate(dateStr, amount, currency) {
